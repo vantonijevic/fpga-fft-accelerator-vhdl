@@ -52,7 +52,9 @@ sim/            Testbenches (fft_top_tb, fft_axis_tb)
 constraints/    Zybo Z7 master XDC
 hw/             Block design (Dizajn.bd) and exported hardware (.xsa)
 sw/             Bare-metal C code for the ARM core (Vitis)
-scripts/        Tcl script that recreates the Vivado project
+ip_repo/        fft_axis packaged as a Vivado user IP (used by the block design)
+scripts/        Tcl scripts that recreate the Vivado project (recreate.tcl)
+                and its block design (Dizajn_bd.tcl)
 docs/           Diagrams and simulation waveforms
 ```
 
@@ -62,12 +64,23 @@ Naming note: identifiers and comments in the source code are in Serbian
 
 ## Verification
 
-- **Simulation.** `sim/fft_top_tb.vhd` tests the core directly, `sim/fft_axis_tb.vhd` tests the AXI-Stream wrapper.
+- **Simulation.** `sim/fft_top_tb.vhd` tests the core directly, `sim/fft_axis_tb.vhd` is a self-checking testbench for the AXI-Stream wrapper (7 tests, all passing):
+
+  | # | Test | Check |
+  |---|---|---|
+  | 1 | Reset | Correct state after reset |
+  | 2 | First packet, real sine at bin 5 | Input stream is deliberately interrupted after sample 20 |
+  | 3 | Receiver stall during transfer | `TVALID` is held for 10 cycles while the receiver is not ready (AXI-Stream rule) |
+  | 4 | Result of the first packet | Spectrum peak at bin 5, \|X\| = 8196 (expected ≈ 8192 for amplitude 0.5 with 1/N scaling) |
+  | 5 | Second consecutive packet, same input | Result identical to the first, max. difference 0 LSB |
+  | 6 | Complex input, exponential at bin 7 | Single peak, no conjugate image |
+  | 7 | Error detection | Packet shorter than 1024 samples is reported through `stat_greska` |
+
 - **On hardware.** `sw/fft_dma_test.c` generates a sine wave at bin 5 (amplitude 0.5), sends it through the accelerator and checks that the spectrum peak is at bin 5 (or its mirror, bin N-5).
 
 ![Simulation waveform](docs/waveform.png)
 
-*Simulation of the AXI-Stream wrapper at 100 MHz: 1024 samples are loaded (~10 µs), the FFT runs (~50 µs, `stat_zauzeto` high) and the spectrum is streamed out (~10 µs). Three consecutive transforms are shown.*
+*Simulation of the AXI-Stream wrapper at 100 MHz. Each transform loads 1024 samples (~10 µs), computes (~50 µs, `stat_zauzeto` high) and streams out the spectrum (~10 µs). The four packets shown correspond to tests 2, 5, 6 and 7; during the last one `stat_greska` goes high, as intended, because the packet is shorter than 1024 samples.*
 
 ## Performance
 
@@ -100,7 +113,7 @@ Maximum clock frequency: 201 MHz.
 
 ## Build and run
 
-**Requirements:** Xilinx Vivado and Vitis (version: 2025.2), a Digilent Zybo Z7 board.
+**Requirements:** Xilinx/AMD Vivado and Vitis 2025.2, a Digilent Zybo Z7-20 board.
 
 1. Recreate the Vivado project:
    ```
